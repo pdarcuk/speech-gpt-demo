@@ -113,8 +113,12 @@
     /* ---- Buttons ---- */
     startBtn.onclick=async()=>{liveEl.textContent=batchEl.textContent="";ansEl.textContent="";usageEl.textContent="";transcriptLines.length=0;askBtn.disabled=batchBtn.disabled=true;startBtn.disabled=true;stopBtn.disabled=false;await startRec();transcriber.startTranscribingAsync();};
     stopBtn.onclick=async()=>{transcriber.stopTranscribingAsync();window._audio=await stopRec();startBtn.disabled=false;stopBtn.disabled=true;};
-    batchBtn.onclick=async()=>{batchBtn.disabled=true;append(batchEl,"\n⏳ Polishing with Batch STT…\n");try{const url=await uploadBlob(window._audio);const job=await createBatch(url);const res=await poll(job);const files=await(fetch(res.links.files,{headers:{"Ocp-Apim-Subscription-Key":speechKey}})).json();const tx=files.values.find(f=>f.kind==="Transcription");if(!tx)throw new Error("No transcript file");const txJson=await(await fetch(tx.links.contentUrl)).json();applyBatch(txJson);append(batchEl,"\n✅ Batch transcript applied\n");askBtn.disabled=false;}catch(e){append(batchEl,"❌ Batch error: "+e);console.error(e);batchBtn.disabled=false;}};
+    batchBtn.onclick=async()=>{batchBtn.disabled=true;append(batchEl,"\n⏳ Polishing with Batch STT…\n");try{const url=await uploadBlob(window._audio);const job=await createBatch(url);const res=await poll(job);const filesResp = await fetch(res.links.files, {
+        headers: { "Ocp-Apim-Subscription-Key": speechKey }
+      });
+      const files = await filesResp.json();applyBatch(txJson);append(batchEl,"\n✅ Batch transcript applied\n");askBtn.disabled=false;}catch(e){append(batchEl,"❌ Batch error: "+e);console.error(e);batchBtn.disabled=false;}};
     askBtn.onclick=askGPT;
   </script>
 </body>
 </html>
+

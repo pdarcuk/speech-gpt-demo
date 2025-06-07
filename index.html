@@ -136,14 +136,16 @@
       `https://${speechRegion}.api.cognitive.microsoft.com/speechtotext/v3.1/transcriptions`;
 
     async function createBatchJob(fileUrl) {
-      const body = {
-        contentUrls: [fileUrl],
-        locale:      "en-US",
-        properties: {
-          diarizationEnabled: true,
-          punctuationMode:    "DictatedAndAutomatic"
-        }
-      };
+        const body = {
+          displayName: `Meeting ${new Date().toISOString()}`,   // ← new line
+          contentUrls: [fileUrl],
+          locale:      "en-US",
+          properties: {
+            diarizationEnabled: true,
+            punctuationMode:    "DictatedAndAutomatic"
+          }
+        };
+
       const r = await fetch(batchEndpoint, {
         method:  "POST",
         headers: {

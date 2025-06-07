@@ -119,12 +119,28 @@
       }
     }
 
-    function applyBatchTranscript(json) {
-      const file = json.results.transcripts[0];
-      if (!file) return;
-      outEl.textContent = file.transcript + "\n(Batch polished)";
+        function applyBatchTranscript(json) {
+      // v3.1 “files” JSON may have either results.transcripts[0].transcript
+      // or the newer combinedRecognizedPhrases array.
+      let text = "";
+      if (json.results?.transcripts?.length) {
+        text = json.results.transcripts.map(t => t.transcript).join("
+");
+      } else if (json.combinedRecognizedPhrases?.length) {
+        text = json.combinedRecognizedPhrases.map(p => p.display).join("
+");
+      }
+      if (!text) {
+        append(outEl, "(Batch JSON contained no transcript)");
+        return;
+      }
+      outEl.textContent = text + "
+(Batch polished)";
       transcriptLines.length = 0;
-      transcriptLines.push(...file.transcript.split(/\r?\n/).map(l=>l+"\n"));
+      transcriptLines.push(...text.split(/
+?
+/).map(l => l + "
+"));
     }
 
     /* 7. GPT client */
@@ -166,4 +182,3 @@
   </script>
 </body>
 </html>
-

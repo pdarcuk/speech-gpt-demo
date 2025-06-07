@@ -3,12 +3,12 @@
 const fs = require('fs');
 const env = process.env;
 const cfg = `window.APP_SETTINGS = {
-  speechKey:       "${env.speech_key}",
-  speechRegion:    "${env.speech_region}",
-  openaiKey:       "${env.openai_key}",
-  openaiBase:      "${env.openai_base}",
-  deployment:      "${env.openai_deployment}",
-  apiVersion:      "${env.api_version}",
-  blobSasUrl:      "${env.blob_sas_url}"
+  speechKey:       "${env.SPEECH_KEY}",
+  speechRegion:    "${env.SPEECH_REGION}",
+  openaiKey:       "${env.OPENAI_KEY}",
+  openaiBase:      "${env.OPENAI_BASE}",
+  deployment:      "${env.OPENAI_DEPLOYMENT}",
+  apiVersion:      "${env.API_VERSION}",
+  blobSasUrl:      "${env.BLOB_SAS_URL}"
 };`;
 fs.writeFileSync('settings.js', cfg);

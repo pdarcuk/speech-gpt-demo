@@ -25,13 +25,13 @@ jobs:
         run: |
           cat > settings.js <<'EOF'
           window.APP_SETTINGS = {
-            speechKey:       "${{ secrets.SPEECH_KEY }}",
-            speechRegion:    "${{ secrets.SPEECH_REGION }}",
-            openaiKey:       "${{ secrets.OPENAI_KEY }}",
-            openaiBase:      "${{ secrets.OPENAI_BASE }}",
-            deployment:      "${{ secrets.OPENAI_DEPLOYMENT }}",
-            apiVersion:      "${{ secrets.OPENAI_VERSION }}",
-            blobSasUrl:      "${{ secrets.BLOB_SAS_URL }}"
+            speechKey:       "${{ secrets.speech_key }}",
+            speechRegion:    "${{ secrets.speech_region }}",
+            openaiKey:       "${{ secrets.openai_key }}",
+            openaiBase:      "${{ secrets.openai_base }}",
+            deployment:      "${{ secrets.openai_deployment }}",
+            apiVersion:      "${{ secrets.api_version }}",
+            blobSasUrl:      "${{ secrets.blob_sas_url }}"
           };
           EOF
         shell: bash

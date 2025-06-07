@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>🎤 Speech → GPT-4o mini</title>
+  <title>🎤 Speech → GPT‑4o mini</title>
 
   <!-- Azure Speech SDK -->
   <script src="https://aka.ms/csspeech/jsbrowserpackageraw"></script>
@@ -23,9 +23,9 @@
       }
     }
     body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-         background:var(--bg);color:var(--fg);max-width:960px;margin:40px auto;padding:0 1rem}
+         background:var(--bg);color:var(--fg);max-width:1000px;margin:40px auto;padding:0 1rem}
     h1{font-size:1.6rem;font-weight:600;display:flex;align-items:center;gap:.4rem;margin-bottom:1rem}
-    h2{font-size:1.05rem;font-weight:600;margin:1.5rem 0 .5rem}
+    h2{font-size:1.05rem;font-weight:600;margin:.9rem 0 .4rem}
     button{padding:.6rem 1.2rem;border:none;border-radius:.75rem;font-size:.95rem;
            background:var(--accent);color:#fff;cursor:pointer;transition:.2s}
     button:hover:not(:disabled){background:var(--accent-hover)}
@@ -34,240 +34,87 @@
           height:18rem;overflow:auto;background:var(--pane)}
     #answer{background:var(--pane-2)}
     #usage{font-size:.85rem;color:var(--fg);opacity:.7;margin-top:.4rem}
-    /* scrollbar for code panes */
     .pane::-webkit-scrollbar{width:6px}
     .pane::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+    .grid{display:flex;gap:1rem;flex-wrap:wrap}
+    .grid>div{flex:1 1 300px;min-width:250px}
   </style>
 </head>
 <body>
-  <h1>🎤 Live Transcription → GPT-4o mini</h1>
+  <h1>🎤 Live Transcription → GPT‑4o mini</h1>
 
   <div style="display:flex;flex-wrap:wrap;gap:.5rem 1rem">
     <button id="startBtn">Start&nbsp;recording</button>
     <button id="stopBtn"  disabled>Stop&nbsp;recording</button>
     <button id="batchBtn" disabled>Improve&nbsp;with&nbsp;Batch</button>
-    <button id="askBtn"   disabled>Ask&nbsp;GPT-4o&nbsp;mini</button>
+    <button id="askBtn"   disabled>Ask&nbsp;GPT‑4o&nbsp;mini</button>
   </div>
 
-  <h2>Transcript</h2>
-  <div id="output" class="pane"></div>
+  <div class="grid">
+    <div>
+      <h2>Live transcript</h2>
+      <div id="liveOutput" class="pane"></div>
+    </div>
+    <div>
+      <h2>Batch transcript</h2>
+      <div id="batchOutput" class="pane"></div>
+    </div>
+  </div>
 
-  <h2>GPT-4o mini answer</h2>
+  <h2>GPT‑4o mini answer</h2>
   <div id="answer" class="pane"></div>
   <div id="usage"></div>
 
-
+  <!-- ——  JS logic  —— -->
   <script type="module">
     import OpenAI from "https://cdn.jsdelivr.net/npm/openai@4.26.0/+esm";
 
-    /* -------------------------------------------------------------- */
-    /* 1.  Secrets                                                    */
-    /* -------------------------------------------------------------- */
-    const {
-      speechKey, speechRegion,
-      openaiKey, openaiBase, deployment, apiVersion,
-      blobSasUrl
-    } = window.APP_SETTINGS ?? {};
+    const { speechKey,speechRegion,openaiKey,openaiBase,deployment,apiVersion,blobSasUrl } = window.APP_SETTINGS ?? {};
+    if(!speechKey||!speechRegion||!openaiKey||!openaiBase||!deployment||!apiVersion||!blobSasUrl){alert("⚠️ Missing settings");}
 
-    if (!speechKey || !speechRegion || !openaiKey || !openaiBase ||
-        !deployment || !apiVersion || !blobSasUrl) {
-      alert("⚠️  One or more settings are missing in settings.js — fill them in and reload.");
-    }
+    const $=id=>document.getElementById(id);
+    const liveEl=$("liveOutput"),batchEl=$("batchOutput"),ansEl=$("answer"),usageEl=$("usage");
+    const [startBtn,stopBtn,batchBtn,askBtn] = ["startBtn","stopBtn","batchBtn","askBtn"].map($);
+    const append=(el,txt)=>{el.textContent+=txt;el.scrollTop=el.scrollHeight;};
 
-    /* -------------------------------------------------------------- */
-    /* 2.  DOM helpers                                                */
-    /* -------------------------------------------------------------- */
-    const $   = id => document.getElementById(id);
-    const out = $("output"), ans = $("answer"), usage = $("usage");
-    const [startBtn, stopBtn, batchBtn, askBtn] =
-          ["startBtn","stopBtn","batchBtn","askBtn"].map($);
-    const append = (el, txt) => { el.textContent += txt; el.scrollTop = el.scrollHeight; };
+    /* ---- Speech SDK ---- */
+    const speechCfg=SpeechSDK.SpeechConfig.fromSubscription(speechKey,speechRegion);
+    speechCfg.speechRecognitionLanguage="en-US";
+    speechCfg.setProperty(SpeechSDK.PropertyId.SpeechServiceResponse_DiarizationEnabled,"true");
+    const mic=SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
+    const transcriber=new SpeechSDK.ConversationTranscriber(speechCfg,mic);
 
-    /* -------------------------------------------------------------- */
-    /* 3.  Speech-to-text live                                        */
-    /* -------------------------------------------------------------- */
-    const speechCfg = SpeechSDK.SpeechConfig.fromSubscription(speechKey, speechRegion);
-    speechCfg.speechRecognitionLanguage = "en-US";
-    speechCfg.setProperty(
-      SpeechSDK.PropertyId.SpeechServiceResponse_DiarizationEnabled, "true"
-    );
-    const micAudio   = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
-    const transcriber = new SpeechSDK.ConversationTranscriber(speechCfg, micAudio);
-
-    const transcriptLines = [];
-    transcriber.transcribed = (_, e) => {
-      const name = `Speaker ${e.result.speakerId}`;
-      const line = `${name}: ${e.result.text}\n`;
+    const transcriptLines=[];
+    transcriber.transcribed = (_,e)=>{
+      const line=`Speaker ${e.result.speakerId}: ${e.result.text}\n`;
       transcriptLines.push(line);
-      append(out, line);
-      askBtn.disabled   = false;
-      batchBtn.disabled = false;
+      append(liveEl,line);
+      askBtn.disabled=false;batchBtn.disabled=false;
     };
 
-    /* -------------------------------------------------------------- */
-    /* 4.  MediaRecorder                                              */
-    /* -------------------------------------------------------------- */
-    let mediaRec; let chunks = [];
-    async function startRecording() {
-      chunks = [];
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRec = new MediaRecorder(stream, { mimeType: "audio/webm" });
-      mediaRec.ondataavailable = e => chunks.push(e.data);
-      mediaRec.start();
-    }
-    function stopRecording() {
-      return new Promise(res => {
-        mediaRec.onstop = () => res(new Blob(chunks, { type: "audio/webm" }));
-        mediaRec.stop();
-      });
-    }
+    /* ---- Recording ---- */
+    let mediaRec;let chunks=[];
+    async function startRec(){chunks=[];const s=await navigator.mediaDevices.getUserMedia({audio:true});mediaRec=new MediaRecorder(s,{mimeType:"audio/webm"});mediaRec.ondataavailable=e=>chunks.push(e.data);mediaRec.start();}
+    function stopRec(){return new Promise(r=>{mediaRec.onstop=()=>r(new Blob(chunks,{type:"audio/webm"}));mediaRec.stop();});}
 
-    /* -------------------------------------------------------------- */
-    /* 5.  Upload blob                                                */
-    /* -------------------------------------------------------------- */
-    async function uploadToBlob(blob) {
-      const i   = blobSasUrl.indexOf("?");
-      const root= blobSasUrl.substring(0, i);   // https://.../audio
-      const sas = blobSasUrl.substring(i);      // ?sv=...
-      const file = `meeting-${Date.now()}.webm`;
-      const url  = `${root}/${file}${sas}`;
+    /* ---- Blob upload ---- */
+    async function uploadBlob(blob){const i=blobSasUrl.indexOf("?");const root=blobSasUrl.slice(0,i);const sas=blobSasUrl.slice(i);const name=`meeting-${Date.now()}.webm`;const url=`${root}/${name}${sas}`;const res=await fetch(url,{method:"PUT",headers:{"x-ms-blob-type":"BlockBlob"},body:blob});if(!res.ok)throw new Error("Blob PUT "+res.status);return url;}
 
-      const r = await fetch(url, {
-        method: "PUT",
-        headers: { "x-ms-blob-type": "BlockBlob" },
-        body: blob
-      });
-      if (!r.ok) throw new Error("Blob PUT failed: " + r.status);
-      return url;                               // read+write SAS
-    }
+    /* ---- Batch helpers ---- */
+    const batchEndpoint=`https://${speechRegion}.api.cognitive.microsoft.com/speechtotext/v3.1/transcriptions`;
+    async function createBatch(fileUrl){const body={displayName:`Meeting ${new Date().toISOString()}`,contentUrls:[fileUrl],locale:"en-US",properties:{diarizationEnabled:true,punctuationMode:"DictatedAndAutomatic"}};const r=await fetch(batchEndpoint,{method:"POST",headers:{"Ocp-Apim-Subscription-Key":speechKey,"Content-Type":"application/json"},body:JSON.stringify(body)});if(!r.ok)throw new Error(await r.text());return r.headers.get("location");}
+    async function poll(url){while(true){const r=await fetch(url,{headers:{"Ocp-Apim-Subscription-Key":speechKey}});const j=await r.json();if(j.status==="Succeeded")return j;if(j.status==="Failed")throw new Error(JSON.stringify(j));await new Promise(s=>setTimeout(s,8000));}}
+    function applyBatch(json){let text="";if(json.results?.transcripts?.length){text=json.results.transcripts.map(t=>t.transcript).join("\n");}else if(json.combinedRecognizedPhrases?.length){text=json.combinedRecognizedPhrases.sort((a,b)=>a.offset-b.offset).map(p=>`Speaker ${p.speaker??p.channel??0}: ${p.display}`).join("\n");}batchEl.textContent=text+"\n(Batch polished)";transcriptLines.length=0;transcriptLines.push(...text.split(/\r?\n/).map(l=>l+"\n"));}
 
-    /* -------------------------------------------------------------- */
-    /* 6.  Batch STT helpers                                          */
-    /* -------------------------------------------------------------- */
-    const batchEndpoint =
-      `https://${speechRegion}.api.cognitive.microsoft.com/speechtotext/v3.1/transcriptions`;
+    /* ---- GPT client ---- */
+    const openai=new OpenAI({apiKey:openaiKey,baseURL:`${openaiBase}/openai/deployments/${deployment}`,dangerouslyAllowBrowser:true,defaultQuery:{"api-version":apiVersion}});
+    async function askGPT(){ansEl.textContent="";usageEl.textContent="";const prompt='TOP INSIGHTS first (max 5 bullets), then per-speaker bullets.\nUse the speaker name before the colon if present, otherwise "Speaker <n>".';const r=await openai.chat.completions.create({model:"",messages:[{role:"system",content:"You are a concise analyst."},{role:"user",content:`${prompt}\n\n-----\n${transcriptLines.join("")}-----`}],temperature:0.3});ansEl.textContent=r.choices[0].message.content.trim();if(r.usage){const {prompt_tokens:p,completion_tokens:c,total_tokens:t}=r.usage;usageEl.textContent=`Tokens — prompt ${p}  completion ${c}  total ${t}`;}}
 
-    async function createBatchJob(fileUrl) {
-      const body = {
-        displayName: `Meeting ${new Date().toISOString()}`,
-        contentUrls: [fileUrl],
-        locale:      "en-US",
-        properties:  { diarizationEnabled: true, punctuationMode: "DictatedAndAutomatic" }
-      };
-      const r = await fetch(batchEndpoint, {
-        method: "POST",
-        headers: { "Ocp-Apim-Subscription-Key": speechKey,
-                   "Content-Type": "application/json" },
-        body: JSON.stringify(body)
-      });
-      if (!r.ok) throw new Error(await r.text());
-      return r.headers.get("location");
-    }
-
-    async function pollJob(jobUrl) {
-      while (true) {
-        const r = await fetch(jobUrl, {
-          headers: { "Ocp-Apim-Subscription-Key": speechKey }
-        });
-        const j = await r.json();
-        if (j.status === "Succeeded") return j;
-        if (j.status === "Failed")    throw new Error(JSON.stringify(j, null, 2));
-        await new Promise(s => setTimeout(s, 8000));
-      }
-    }
-
-    function applyBatchTranscript(json) {
-      let text = "";
-      if (json.results?.transcripts?.length) {
-        text = json.results.transcripts.map(t => t.transcript).join("\n");
-      } else if (json.combinedRecognizedPhrases?.length) {
-        text = json.combinedRecognizedPhrases.map(p => p.display).join("\n");
-      } else {
-        text = "(No transcript text in Batch JSON)";
-      }
-      out.textContent = text + "\n(Batch polished)";
-      transcriptLines.length = 0;
-      transcriptLines.push(...text.split(/\r?\n/).map(l => l + "\n"));
-    }
-
-    /* -------------------------------------------------------------- */
-    /* 7.  GPT client                                                 */
-    /* -------------------------------------------------------------- */
-    const openai = new OpenAI({
-      apiKey: openaiKey,
-      baseURL: `${openaiBase}/openai/deployments/${deployment}`,
-      dangerouslyAllowBrowser: true,
-      defaultQuery: { "api-version": apiVersion }
-    });
-
-    async function askGPT() {
-      ans.textContent = ""; usage.textContent = "";
-      const prompt = 'TOP INSIGHTS first (max 5 bullets), then per-speaker bullets.\\nUse the speaker name before the colon if present, otherwise "Speaker <n>".';
-
-      const resp = await openai.chat.completions.create({
-        model: "",
-        messages: [
-          { role: "system", content: "You are a concise analyst." },
-          { role: "user", content: `${prompt}\n\n-----\n${transcriptLines.join("")}-----` }
-        ],
-        temperature: 0.3
-      });
-
-      ans.textContent = resp.choices[0].message.content.trim();
-      if (resp.usage) {
-        const { prompt_tokens:p, completion_tokens:c, total_tokens:t } = resp.usage;
-        usage.textContent = `Tokens — prompt ${p}  completion ${c}  total ${t}`;
-      }
-    }
-
-    /* -------------------------------------------------------------- */
-    /* 8.  Buttons                                                    */
-    /* -------------------------------------------------------------- */
-    startBtn.onclick = async () => {
-      out.textContent = ""; ans.textContent = ""; usage.textContent = "";
-      transcriptLines.length = 0; askBtn.disabled = true; batchBtn.disabled = true;
-      startBtn.disabled = true;  stopBtn.disabled = false;
-      await startRecording();
-      transcriber.startTranscribingAsync();
-    };
-
-    stopBtn.onclick = async () => {
-      transcriber.stopTranscribingAsync();
-      window._lastAudioBlob = await stopRecording();
-      startBtn.disabled = false; stopBtn.disabled = true;
-    };
-
-    batchBtn.onclick = async () => {
-      batchBtn.disabled = true;
-      append(out, "\n⏳ Polishing with Batch STT…\n");
-      try {
-        const fileUrl   = await uploadToBlob(window._lastAudioBlob);
-        const jobUrl    = await createBatchJob(fileUrl);
-        const jobResult = await pollJob(jobUrl);
-
-        /* ---------- new file-list logic ---------- */
-        const filesResp = await fetch(jobResult.links.files, {
-          headers: { "Ocp-Apim-Subscription-Key": speechKey }
-        });
-        const filesJson = await filesResp.json();
-        const txFile    = filesJson.values.find(f => f.kind === "Transcription");
-        if (!txFile) throw new Error("No transcription file found in job result");
-
-        const transcriptResp = await fetch(txFile.links.contentUrl);
-        const transcriptJson = await transcriptResp.json();
-        /* ---------------------------------------- */
-
-        applyBatchTranscript(transcriptJson);
-        append(out, "\n✅ Batch transcript applied\n");
-        askBtn.disabled = false;
-      } catch (err) {
-        append(out, "❌ Batch error: " + err);
-        console.error(err);
-        batchBtn.disabled = false;
-      }
-    };
-
-    askBtn.onclick = askGPT;
+    /* ---- Buttons ---- */
+    startBtn.onclick=async()=>{liveEl.textContent=batchEl.textContent="";ansEl.textContent="";usageEl.textContent="";transcriptLines.length=0;askBtn.disabled=batchBtn.disabled=true;startBtn.disabled=true;stopBtn.disabled=false;await startRec();transcriber.startTranscribingAsync();};
+    stopBtn.onclick=async()=>{transcriber.stopTranscribingAsync();window._audio=await stopRec();startBtn.disabled=false;stopBtn.disabled=true;};
+    batchBtn.onclick=async()=>{batchBtn.disabled=true;append(batchEl,"\n⏳ Polishing with Batch STT…\n");try{const url=await uploadBlob(window._audio);const job=await createBatch(url);const res=await poll(job);const files=await(fetch(res.links.files,{headers:{"Ocp-Apim-Subscription-Key":speechKey}})).json();const tx=files.values.find(f=>f.kind==="Transcription");if(!tx)throw new Error("No transcript file");const txJson=await(await fetch(tx.links.contentUrl)).json();applyBatch(txJson);append(batchEl,"\n✅ Batch transcript applied\n");askBtn.disabled=false;}catch(e){append(batchEl,"❌ Batch error: "+e);console.error(e);batchBtn.disabled=false;}};
+    askBtn.onclick=askGPT;
   </script>
 </body>
 </html>

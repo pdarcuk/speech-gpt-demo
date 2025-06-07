@@ -116,7 +116,7 @@
     batchBtn.onclick=async()=>{batchBtn.disabled=true;append(batchEl,"\n⏳ Polishing with Batch STT…\n");try{const url=await uploadBlob(window._audio);const job=await createBatch(url);const res=await poll(job);const filesResp = await fetch(res.links.files, {
         headers: { "Ocp-Apim-Subscription-Key": speechKey }
       });
-      const files = await filesResp.json();applyBatch(txJson);append(batchEl,"\n✅ Batch transcript applied\n");askBtn.disabled=false;}catch(e){append(batchEl,"❌ Batch error: "+e);console.error(e);batchBtn.disabled=false;}};
+      const files = await filesResp.json();applyBatch(transcriptJson);append(batchEl,"\n✅ Batch transcript applied\n");askBtn.disabled=false;}catch(e){append(batchEl,"❌ Batch error: "+e);console.error(e);batchBtn.disabled=false;}};
     askBtn.onclick=askGPT;
   </script>
 </body>

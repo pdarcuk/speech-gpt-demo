@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Speech → GPT-4o mini demo + Batch polish</title>
+
+  <!-- Azure Speech SDK -->
+  <script src="https://aka.ms/csspeech/jsbrowserpackageraw"></script>
+  <!-- Secrets live in settings.js (kept out of version control) -->
+  <script src="settings.js"></script>
+
+  <style>
+    body   {font-family:sans-serif;max-width:850px;margin:40px auto}
+    button {padding:10px 20px;font-size:1rem;margin:0 8px 12px 0}
+    .pane  {white-space:pre-wrap;border:1px solid #ccc;padding:1rem;
+            height:260px;overflow:auto;border-radius:6px}
+    #output{background:#f5faff}
+    #answer{background:#fffaf5}
+    h2     {margin-top:24px;font-size:1.1rem}
+    #usage {font-size:0.9rem;color:#555;margin-top:6px}
+  </style>
+</head>
+<body>
+  <h1>🎤 Live transcription → GPT-4o mini</h1>
+  <div>
+    <button id="startBtn">Start recording</button>
+    <button id="stopBtn"  disabled>Stop recording</button>
+    <button id="batchBtn" disabled>Improve with Batch</button>
+    <button id="askBtn"   disabled>Ask GPT-4o mini</button>
+  </div>
+
+  <h2>Transcript</h2>
+  <div id="output" class="pane"></div>
+
+  <h2>GPT-4o mini answer</h2>
+  <div id="answer" class="pane"></div>
+  <div id="usage"></div>
+
+  <script type="module">
+    import OpenAI from "https://cdn.jsdelivr.net/npm/openai@4.26.0/+esm";
+
+    /* ---------------------------------------------------------------
+       1.  Load secrets from settings.js
+    ----------------------------------------------------------------*/
+    const {
+      speechKey,
+      speechRegion,
+      openaiKey,
+      openaiBase,
+      deployment,
+      apiVersion,
+      blobSasUrl            // container-level SAS URL
+    } = window.APP_SETTINGS ?? {};
+
+    if (!speechKey || !speechRegion || !openaiKey || !openaiBase ||
+        !deployment || !apiVersion || !blobSasUrl) {
+      alert("⚠️  One or more settings are missing in settings.js — fill them in and reload.");
+    }
+
+    /* ---------------------------------------------------------------
+       2.  DOM helpers
+    ----------------------------------------------------------------*/
+    const $ = id => document.getElementById(id);
+    const outEl   = $("output"),
+          ansEl   = $("answer"),
+          usageEl = $("usage");
+    const [startBtn, stopBtn, batchBtn, askBtn] =
+          ["startBtn","stopBtn","batchBtn","askBtn"].map($);
+    const append = (el, txt) => { el.textContent += txt; el.scrollTop = el.scrollHeight; };
+
+    /* ---------------------------------------------------------------
+       3.  Live STT setup (finals only)
+    ----------------------------------------------------------------*/
+    const speechCfg = SpeechSDK.SpeechConfig.fromSubscription(speechKey, speechRegion);
+    speechCfg.speechRecognitionLanguage = "en-US";
+    speechCfg.setProperty(
+      SpeechSDK.PropertyId.SpeechServiceResponse_DiarizationEnabled, "true"
+    );
+
+    const micAudio   = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
+    const transcriber = new SpeechSDK.ConversationTranscriber(speechCfg, micAudio);
+
+    const transcriptLines = [];
+    transcriber.transcribed = (_, e) => {
+      const id   = e.result.speakerId;
+      const name = `Speaker ${id}`;
+      const line = `${name}: ${e.result.text}\n`;
+      transcriptLines.push(line);
+      append(outEl, line);
+      askBtn.disabled   = false;
+      batchBtn.disabled = false;
+    };
+
+    /* ---------------------------------------------------------------
+       4.  Record raw audio (MediaRecorder)
+    ----------------------------------------------------------------*/
+    let mediaRec; let chunks = [];
+    async function startRecording() {
+      chunks = [];
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRec = new MediaRecorder(stream, { mimeType: "audio/webm" });
+      mediaRec.ondataavailable = e => chunks.push(e.data);
+      mediaRec.start();
+    }
+    function stopRecording() {
+      return new Promise(res => {
+        mediaRec.onstop = () => res(new Blob(chunks, { type: "audio/webm" }));
+        mediaRec.stop();
+      });
+    }
+
+    /* ---------------------------------------------------------------
+       5.  Upload blob  (fixed path order)
+    ----------------------------------------------------------------*/
+    async function uploadToBlob(blob) {
+      // blobSasUrl ends with .../audio?<SAS>
+      const i    = blobSasUrl.indexOf("?");
+      const root = blobSasUrl.substring(0, i);   // https://.../audio
+      const sas  = blobSasUrl.substring(i);      // ?sv=...
+      const fileName = `meeting-${Date.now()}.webm`;
+      const url = `${root}/${fileName}${sas}`;   // file before the ?sv=...
+
+      const r = await fetch(url, {
+        method:  "PUT",
+        headers: { "x-ms-blob-type": "BlockBlob" },
+        body:    blob
+      });
+      if (!r.ok) throw new Error("Blob PUT failed: " + r.status);
+      return url;                                // full SAS URL to pass to Batch
+    }
+
+    /* ---------------------------------------------------------------
+       6.  Batch STT job helpers
+    ----------------------------------------------------------------*/
+    const batchEndpoint =
+      `https://${speechRegion}.api.cognitive.microsoft.com/speechtotext/v3.1/transcriptions`;
+
+    async function createBatchJob(fileUrl) {
+      const body = {
+        contentUrls: [fileUrl],
+        locale:      "en-US",
+        properties: {
+          diarizationEnabled: true,
+          punctuationMode:    "DictatedAndAutomatic"
+        }
+      };
+      const r = await fetch(batchEndpoint, {
+        method:  "POST",
+        headers: {
+          "Ocp-Apim-Subscription-Key": speechKey,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(body)
+      });
+      if (!r.ok) throw new Error(await r.text());
+      return r.headers.get("location");
+    }
+
+    async function pollJob(jobUrl) {
+      while (true) {
+        const r = await fetch(jobUrl, {
+          headers: { "Ocp-Apim-Subscription-Key": speechKey }
+        });
+        const j = await r.json();
+        if (j.status === "Succeeded") return j;
+        if (j.status === "Failed")    throw new Error(JSON.stringify(j, null, 2));
+        await new Promise(s => setTimeout(s, 8000));
+      }
+    }
+
+    function applyBatchTranscript(json) {
+      const file = json.results.transcripts[0];
+      if (!file) return;
+      outEl.textContent = file.transcript + "\n(Batch polished)";
+      transcriptLines.length = 0;
+      transcriptLines.push(...file.transcript.split(/\\r?\\n/).map(l => l + "\\n"));
+    }
+
+    /* ---------------------------------------------------------------
+       7.  GPT client (non-stream so we get usage)
+    ----------------------------------------------------------------*/
+    const openai = new OpenAI({
+      apiKey: openaiKey,
+      baseURL: `${openaiBase}/openai/deployments/${deployment}`,
+      dangerouslyAllowBrowser: true,
+      defaultQuery: { "api-version": apiVersion }
+    });
+
+    async function askGPT() {
+      ansEl.textContent = ""; usageEl.textContent = "";
+      const prompt = `TOP INSIGHTS first (max 5 bullets), then per-speaker bullets.
+Use the speaker name before the colon if present, otherwise \"Speaker <n>\".`;
+
+      const resp = await openai.chat.completions.create({
+        model: "",
+        messages: [
+          { role: "system", content: "You are a concise analyst." },
+          { role: "user", content: `${prompt}\n\n-----\n${transcriptLines.join("")}-----` }
+        ],
+        temperature: 0.3
+      });
+
+      ansEl.textContent = resp.choices[0].message.content.trim();
+      if (resp.usage) {
+        const { prompt_tokens:p, completion_tokens:c, total_tokens:t } = resp.usage;
+        usageEl.textContent = `Tokens — prompt ${p}  completion ${c}  total ${t}`;
+      }
+    }
+
+    /* ---------------------------------------------------------------
+       8.  Button actions
+    ----------------------------------------------------------------*/
+    startBtn.onclick = async () => {
+      outEl.textContent = ""; ansEl.textContent = ""; usageEl.textContent = "";
+      transcriptLines.length = 0; askBtn.disabled = true; batchBtn.disabled = true;
+      startBtn.disabled = true;  stopBtn.disabled  = false;
+      await startRecording();
+      transcriber.startTranscribingAsync();
+    };
+
+    stopBtn.onclick = async () => {
+      transcriber.stopTranscribingAsync();
+      window._lastAudioBlob = await stopRecording();
+      startBtn.disabled = false; stopBtn.disabled = true;
+    };
+
+    batchBtn.onclick = async () => {
+      batchBtn.disabled = true;
+      append(outEl, "\n⏳ Polishing with Batch STT…\n");
+      try {
+        const fileUrl   = await uploadToBlob(window._lastAudioBlob);
+        const jobUrl    = await createBatchJob(fileUrl);
+        const jobResult = await pollJob(jobUrl);
+        const transcriptJson = await (await fetch(
+          jobResult.resultsUrls["transcripts"]
+        )).json();
+        applyBatchTranscript(transcriptJson);
+        append(outEl, "\n✅ Batch transcript applied\n");
+        askBtn.disabled = false;
+      } catch (err) {
+        append(outEl, "❌ Batch error: " + err);
+        console.error(err);
+        batchBtn.disabled = false;
+      }
+    };
+
+    askBtn.onclick = askGPT;
+  </script>
+</body>
+</html>

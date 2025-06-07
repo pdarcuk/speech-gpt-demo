@@ -2,30 +2,51 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>Speech → GPT-4o mini demo + Batch polish</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>🎤 Speech → GPT-4o mini</title>
 
   <!-- Azure Speech SDK -->
   <script src="https://aka.ms/csspeech/jsbrowserpackageraw"></script>
-  <!-- Secrets live in settings.js -->
   <script src="settings.js"></script>
 
   <style>
-    body   {font-family:sans-serif;max-width:850px;margin:40px auto}
-    button {padding:10px 20px;font-size:1rem;margin:0 8px 12px 0}
-    .pane  {white-space:pre-wrap;border:1px solid #ccc;padding:1rem;height:260px;overflow:auto;border-radius:6px}
-    #output{background:#f5faff}
-    #answer{background:#fffaf5}
-    h2     {margin-top:24px;font-size:1.1rem}
-    #usage {font-size:0.9rem;color:#555;margin-top:6px}
+    /* ===== CSS RESET (mini) ===================================== */
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --bg:#fdfdfd;--fg:#111;--pane:#f1f5ff;--pane-2:#fff8f3;--border:#d0d7e2;
+      --accent:#2563eb;--accent-hover:#1d4ed8;
+    }
+    @media(prefers-color-scheme:dark){
+      :root{
+        --bg:#0f1522;--fg:#f5f7fa;--pane:#1c2436;--pane-2:#2a1e14;--border:#2b3448;
+        --accent:#3b82f6;--accent-hover:#60a5fa;
+      }
+    }
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+         background:var(--bg);color:var(--fg);max-width:960px;margin:40px auto;padding:0 1rem}
+    h1{font-size:1.6rem;font-weight:600;display:flex;align-items:center;gap:.4rem;margin-bottom:1rem}
+    h2{font-size:1.05rem;font-weight:600;margin:1.5rem 0 .5rem}
+    button{padding:.6rem 1.2rem;border:none;border-radius:.75rem;font-size:.95rem;
+           background:var(--accent);color:#fff;cursor:pointer;transition:.2s}
+    button:hover:not(:disabled){background:var(--accent-hover)}
+    button:disabled{opacity:.4;cursor:not-allowed}
+    .pane{white-space:pre-wrap;border:1px solid var(--border);border-radius:1rem;padding:1rem;
+          height:18rem;overflow:auto;background:var(--pane)}
+    #answer{background:var(--pane-2)}
+    #usage{font-size:.85rem;color:var(--fg);opacity:.7;margin-top:.4rem}
+    /* scrollbar for code panes */
+    .pane::-webkit-scrollbar{width:6px}
+    .pane::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
   </style>
 </head>
 <body>
-  <h1>🎤 Live transcription → GPT-4o mini</h1>
-  <div>
-    <button id="startBtn">Start recording</button>
-    <button id="stopBtn"  disabled>Stop recording</button>
-    <button id="batchBtn" disabled>Improve with Batch</button>
-    <button id="askBtn"   disabled>Ask GPT-4o mini</button>
+  <h1>🎤 Live Transcription → GPT-4o mini</h1>
+
+  <div style="display:flex;flex-wrap:wrap;gap:.5rem 1rem">
+    <button id="startBtn">Start&nbsp;recording</button>
+    <button id="stopBtn"  disabled>Stop&nbsp;recording</button>
+    <button id="batchBtn" disabled>Improve&nbsp;with&nbsp;Batch</button>
+    <button id="askBtn"   disabled>Ask&nbsp;GPT-4o&nbsp;mini</button>
   </div>
 
   <h2>Transcript</h2>
@@ -34,6 +55,7 @@
   <h2>GPT-4o mini answer</h2>
   <div id="answer" class="pane"></div>
   <div id="usage"></div>
+
 
   <script type="module">
     import OpenAI from "https://cdn.jsdelivr.net/npm/openai@4.26.0/+esm";

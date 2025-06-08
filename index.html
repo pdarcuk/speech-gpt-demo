@@ -3,74 +3,53 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>🎤 Speech → GPT-4o mini</title>
-
-  <!-- Azure Speech SDK -->
+  <title>🎤 Speech → GPT‑4o mini</title>
   <script src="https://aka.ms/csspeech/jsbrowserpackageraw"></script>
   <script src="settings.js"></script>
-
   <style>
-    /* ——— Design tokens ——— */
-    :root{
-      --bg:#fbfbfb; --fg:#111; --pane:#f1f5ff; --pane2:#fff8f3; --border:#d0d7e2;
-      --accent:#2563eb; --accent-h:#1d4ed8;
-    }
-    @media(prefers-color-scheme:dark){
-      :root{
-        --bg:#0f1522; --fg:#f5f7fa; --pane:#1c2436; --pane2:#2a1e14; --border:#2b3448;
-        --accent:#3b82f6; --accent-h:#60a5fa;
-      }
-    }
-
-    /* ——— Generic styles ——— */
+    :root{--bg:#fbfbfb;--fg:#111;--pane:#f1f5ff;--pane2:#fff8f3;--border:#d0d7e2;--accent:#2563eb;--accent-h:#1d4ed8}
+    @media(prefers-color-scheme:dark){:root{--bg:#0f1522;--fg:#f5f7fa;--pane:#1c2436;--pane2:#2a1e14;--border:#2b3448;--accent:#3b82f6;--accent-h:#60a5fa}}
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-         background:var(--bg);color:var(--fg);max-width:1000px;margin:40px auto;
-         padding:0 1rem}
-    h1{font-size:1.6rem;font-weight:600;display:flex;align-items:center;gap:.5rem;
-        margin:0 0 1rem}
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--fg);max-width:1000px;margin:40px auto;padding:0 1rem}
+    h1{font-size:1.6rem;font-weight:600;margin:0 0 1rem}
     h2{font-size:1.05rem;font-weight:600;margin:.9rem 0 .4rem}
-    button{padding:.6rem 1.2rem;border:0;border-radius:.75rem;font-size:.95rem;
-           background:var(--accent);color:#fff;cursor:pointer;transition:.2s}
-    button:hover:not(:disabled){background:var(--accent-h)}
-    button:disabled{opacity:.4;cursor:not-allowed}
-
-    /* ——— Layout panes ——— */
-    .pane{background:var(--pane);white-space:pre-wrap;border:1px solid var(--border);
-          border-radius:1rem;padding:1rem;height:18rem;overflow:auto}
-    #batchOutput{background:var(--pane2)}
-    #answer{background:var(--pane2)}
-    #usage{font-size:.85rem;opacity:.7;margin-top:.4rem}
-
-    .pane::-webkit-scrollbar{width:6px}
-    .pane::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
-
-    .grid{display:flex;gap:1rem;flex-wrap:wrap}
-    .grid>div{flex:1 1 300px;min-width:250px}
+    button{padding:.6rem 1.1rem;border:0;border-radius:.75rem;font-size:.9rem;background:var(--accent);color:#fff;cursor:pointer;transition:.2s}
+    button:hover:not(:disabled){background:var(--accent-h)}button:disabled{opacity:.4;cursor:not-allowed}
+    .pane{background:var(--pane);white-space:pre-wrap;border:1px solid var(--border);border-radius:1rem;padding:1rem;height:18rem;overflow:auto}
+    #batchOutput{background:var(--pane2)}#answer{background:var(--pane2)}#usage{font-size:.85rem;opacity:.7;margin-top:.4rem}
+    .pane::-webkit-scrollbar{width:6px}.pane::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+    .grid{display:flex;gap:1rem;flex-wrap:wrap}.grid>div{flex:1 1 300px;min-width:250px}
+    .btn-row{display:flex;gap:.6rem;flex-wrap:wrap;margin:.4rem 0 0}
+    label{font-size:.85rem;display:flex;align-items:center;gap:.4rem;margin:0 0 .6rem}
   </style>
 </head>
 <body>
-  <h1>🎤 Live Transcription → GPT-4o mini</h1>
-
-  <div style="display:flex;flex-wrap:wrap;gap:.5rem 1rem">
-    <button id="startBtn">Start recording</button>
-    <button id="stopBtn"  disabled>Stop recording</button>
-    <button id="batchBtn" disabled>Improve with Batch</button>
-    <button id="askBtn"   disabled>Ask GPT-4o mini</button>
-  </div>
+  <h1>🎤 Live Transcription → GPT‑4o mini</h1>
 
   <div class="grid">
+    <!-- Live transcript -->
     <div>
       <h2>Live transcript</h2>
       <div id="liveOutput" class="pane"></div>
+      <div class="btn-row">
+        <button id="startBtn">Start</button>
+        <button id="stopBtn" disabled>Stop</button>
+      </div>
     </div>
+
+    <!-- Batch transcript -->
     <div>
       <h2>Batch transcript</h2>
       <div id="batchOutput" class="pane"></div>
+      <div class="btn-row"><button id="batchBtn" disabled>Improve with Batch</button></div>
     </div>
   </div>
 
-  <h2>GPT-4o mini answer</h2>
+  <h2>GPT‑4o mini answer</h2>
+  <div class="btn-row">
+    <label><input type="checkbox" id="appendCb"/> Append AI‑cleaned transcript</label>
+    <button id="askBtn" disabled>Ask GPT‑4o mini</button>
+  </div>
   <div id="answer" class="pane"></div>
   <div id="usage"></div>
 

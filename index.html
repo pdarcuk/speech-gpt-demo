@@ -156,7 +156,7 @@
         displayName: `Meeting ${new Date().toISOString()}`,
         contentUrls:[ fileUrl ],
         locale:"en-US",
-        properties:{ diarizationEnabled:true,punctuationMode:"DictatedAndAutomatic" }
+        properties:{ diarizationEnabled:true,punctuationMode:"DictatedAndAutomatic","format": "Detailed" }
       };
       const r = await fetch(batchEp, {
         method:"POST",

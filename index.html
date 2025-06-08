@@ -19,237 +19,113 @@
     #batchOutput{background:var(--pane2)}#answer{background:var(--pane2)}#usage{font-size:.85rem;opacity:.7;margin-top:.4rem}
     .pane::-webkit-scrollbar{width:6px}.pane::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
     .grid{display:flex;gap:1rem;flex-wrap:wrap}.grid>div{flex:1 1 300px;min-width:250px}
-    .btn-row{display:flex;gap:.6rem;flex-wrap:wrap;margin:.4rem 0 0}
-    label{font-size:.85rem;display:flex;align-items:center;gap:.4rem;margin:0 0 .6rem}
   </style>
 </head>
 <body>
   <h1>🎤 Live Transcription → GPT‑4o mini</h1>
 
-  <div class="grid">
-    <!-- Live transcript -->
-    <div>
-      <h2>Live transcript</h2>
-      <div id="liveOutput" class="pane"></div>
-      <div class="btn-row">
-        <button id="startBtn">Start</button>
-        <button id="stopBtn" disabled>Stop</button>
-      </div>
-    </div>
+  <h2>Live transcript</h2>
+  <button id="startBtn">Start recording</button>
+  <button id="stopBtn" disabled>Stop recording</button>
+  <div id="liveOutput" class="pane" style="margin-top:.6rem"></div>
 
-    <!-- Batch transcript -->
-    <div>
-      <h2>Batch transcript</h2>
-      <div id="batchOutput" class="pane"></div>
-      <div class="btn-row"><button id="batchBtn" disabled>Improve with Batch</button></div>
-    </div>
-  </div>
+  <h2 style="margin-top:1.4rem">Batch transcript</h2>
+  <button id="batchBtn" disabled>Improve with Batch</button>
+  <div id="batchOutput" class="pane" style="margin-top:.6rem"></div>
 
-  <h2>GPT‑4o mini answer</h2>
-  <div class="btn-row">
-    <label><input type="checkbox" id="appendCb"/> Append AI‑cleaned transcript</label>
-    <button id="askBtn" disabled>Ask GPT‑4o mini</button>
-  </div>
-  <div id="answer" class="pane"></div>
+  <h2 style="margin-top:1.4rem">GPT‑4o mini answer</h2>
+  <label style="display:inline-flex;align-items:center;gap:.4rem;margin-bottom:.4rem">
+    <input type="checkbox" id="appendCheck"/>
+    Append AI‑cleaned transcript
+  </label>
+  <button id="askBtn" disabled>Ask GPT‑4o mini</button>
+  <div id="answer" class="pane" style="margin-top:.6rem"></div>
   <div id="usage"></div>
 
-  <!-- -------------- JS logic -------------- -->
   <script type="module">
     import OpenAI from "https://cdn.jsdelivr.net/npm/openai@4.26.0/+esm";
+    const {speechKey,speechRegion,openaiKey,openaiBase,deployment,apiVersion,blobSasUrl}=window.APP_SETTINGS??{};
+    if(!speechKey||!speechRegion||!openaiKey||!openaiBase||!deployment||!apiVersion||!blobSasUrl){alert("Missing settings");}
+    const $=id=>document.getElementById(id);
+    const liveEl=$("liveOutput"),batchEl=$("batchOutput"),ansEl=$("answer"),usageEl=$("usage");
+    const [startBtn,stopBtn,batchBtn,askBtn] =["startBtn","stopBtn","batchBtn","askBtn"].map($);
+    const append=(el,t)=>{el.textContent+=t;el.scrollTop=el.scrollHeight;};
 
-    /* ---------- settings ---------- */
-    const {
-      speechKey, speechRegion,
-      openaiKey, openaiBase, deployment, apiVersion,
-      blobSasUrl
-    } = window.APP_SETTINGS ?? {};
-    if (!speechKey || !speechRegion || !openaiKey || !openaiBase ||
-        !deployment || !apiVersion || !blobSasUrl) {
-      alert("⚠️ Missing settings — check settings.js");
-    }
-
-    /* ---------- dom helpers ---------- */
-    const $ = id => document.getElementById(id);
-    const liveEl  = $("liveOutput");
-    const batchEl = $("batchOutput");
-    const ansEl   = $("answer");
-    const usageEl = $("usage");
-    const [startBtn, stopBtn, batchBtn, askBtn] =
-          ["startBtn","stopBtn","batchBtn","askBtn"].map($);
-    const appendCb = $("appendCb");
-    const append = (el, txt) => { el.textContent += txt; el.scrollTop = el.scrollHeight; };
-
-    /* ---------- live STT ---------- */
-    const cfg = SpeechSDK.SpeechConfig.fromSubscription(speechKey, speechRegion);
-    cfg.speechRecognitionLanguage = "en-US";
-    cfg.setProperty(
-      SpeechSDK.PropertyId.SpeechServiceResponse_DiarizationEnabled, "true");
-    const mic  = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
-    const stt  = new SpeechSDK.ConversationTranscriber(cfg, mic);
-
-    const transcriptLines = [];
+    /* Speech SDK */
+    const cfg=SpeechSDK.SpeechConfig.fromSubscription(speechKey,speechRegion);
+    cfg.speechRecognitionLanguage="en-US";
+    cfg.setProperty(SpeechSDK.PropertyId.SpeechServiceResponse_DiarizationEnabled,"true");
+    const mic=SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
+    const stt=new SpeechSDK.ConversationTranscriber(cfg,mic);
+    const liveLines = [];
+const batchLines = [];
     stt.transcribed = (_, e) => {
-      const line = `Speaker ${e.result.speakerId}: ${e.result.text}\n`;
-      transcriptLines.push(line);
+      const line = `Speaker ${e.result.speakerId}: ${e.result.text}
+`;
+      liveLines.push(line);
       append(liveEl, line);
       askBtn.disabled = false;
       batchBtn.disabled = false;
-    };
+    };};
 
-    /* ---------- recording ---------- */
-    let rec; let chunks = [];
-    async function startRec() {
-      chunks = [];
-      const stream = await navigator.mediaDevices.getUserMedia({ audio:true });
-      rec = new MediaRecorder(stream, { mimeType:"audio/webm" });
-      rec.ondataavailable = e => chunks.push(e.data);
-      rec.start();
-    }
-    function stopRec() {
-      return new Promise(res => {
-        rec.onstop = () => res(new Blob(chunks,{type:"audio/webm"}));
-        rec.stop();
-      });
-    }
+    /* recording */
+    let rec;let chunks=[];async function startRec(){chunks=[];const s=await navigator.mediaDevices.getUserMedia({audio:true});rec=new MediaRecorder(s,{mimeType:"audio/webm"});rec.ondataavailable=e=>chunks.push(e.data);rec.start();}
+    function stopRec(){return new Promise(r=>{rec.onstop=()=>r(new Blob(chunks,{type:"audio/webm"}));rec.stop();});}
 
-    /* ---------- blob upload ---------- */
-    async function uploadBlob(blob) {
-      const qi = blobSasUrl.indexOf("?");
-      const root = blobSasUrl.slice(0, qi);
-      const sas  = blobSasUrl.slice(qi);
-      const name = `meeting-${Date.now()}.webm`;
-      const url  = `${root}/${name}${sas}`;
-      const r = await fetch(url, {
-        method:"PUT",
-        headers:{ "x-ms-blob-type":"BlockBlob" },
-        body:blob
-      });
-      if (!r.ok) throw new Error("Blob PUT " + r.status);
-      return url;
-    }
+    /* upload */
+    async function up(blob){const i=blobSasUrl.indexOf("?");const root=blobSasUrl.slice(0,i);const sas=blobSasUrl.slice(i);const name=`meeting-${Date.now()}.webm`;const url=`${root}/${name}${sas}`;const res=await fetch(url,{method:"PUT",headers:{"x-ms-blob-type":"BlockBlob"},body:blob});if(!res.ok)throw new Error(res.status);return url;}
 
-    /* ---------- batch STT helpers ---------- */
-    const batchEp =
-      `https://${speechRegion}.api.cognitive.microsoft.com/speechtotext/v3.1/transcriptions`;
-    async function createBatch(fileUrl) {
-      const body = {
-        displayName: `Meeting ${new Date().toISOString()}`,
-        contentUrls:[ fileUrl ],
-        locale:"en-US",
-        properties:{ diarizationEnabled:true,punctuationMode:"DictatedAndAutomatic","format": "Detailed" }
-      };
-      const r = await fetch(batchEp, {
-        method:"POST",
-        headers:{ "Ocp-Apim-Subscription-Key":speechKey,
-                  "Content-Type":"application/json" },
-        body:JSON.stringify(body)
-      });
-      if (!r.ok) throw new Error(await r.text());
-      return r.headers.get("location");
-    }
-    async function pollJob(url) {
-      while(true){
-        const r = await fetch(url, { headers:{ "Ocp-Apim-Subscription-Key":speechKey }});
-        const j = await r.json();
-        if (j.status === "Succeeded") return j;
-        if (j.status === "Failed")    throw new Error(JSON.stringify(j));
-        await new Promise(s=>setTimeout(s,8000));
+    /* batch helpers */
+    const ep=`https://${speechRegion}.api.cognitive.microsoft.com/speechtotext/v3.1/transcriptions`;
+    async function createJob(u){const body={displayName:`Meeting ${new Date().toISOString()}`,contentUrls:[u],locale:"en-US",properties:{diarizationEnabled:true,punctuationMode:"DictatedAndAutomatic"}};const r=await fetch(ep,{method:"POST",headers:{"Ocp-Apim-Subscription-Key":speechKey,"Content-Type":"application/json"},body:JSON.stringify(body)});if(!r.ok)throw new Error(await r.text());return r.headers.get("location");}
+    async function poll(j){while(true){const r=await fetch(j,{headers:{"Ocp-Apim-Subscription-Key":speechKey}});const d=await r.json();if(d.status==="Succeeded")return d;if(d.status==="Failed")throw new Error(JSON.stringify(d));await new Promise(s=>setTimeout(s,8000));}}
+    function showBatch(js){
+      let text="";
+      if(js.results?.transcripts?.length){text=js.results.transcripts.map(t=>t.transcript).join("
+");}
+      else if(js.combinedRecognizedPhrases?.length){
+        text=js.combinedRecognizedPhrases.sort((a,b)=>a.offset-b.offset)
+          .map(p=>`Speaker ${p.speaker??p.channel??0}: ${p.display}`).join("
+");
       }
-    }
-    function applyBatch(json) {
-      let text = "";
-      if (json.results?.transcripts?.length){
-        text = json.results.transcripts.map(t=>t.transcript).join("\n");
-      } else if (json.combinedRecognizedPhrases?.length){
-        text = json.combinedRecognizedPhrases
-          .sort((a,b)=>a.offset-b.offset)
-          .map(p=>`Speaker ${p.speaker ?? p.channel ?? 0}: ${p.display}`).join("\n");
-      }
-      batchEl.textContent = text + "\n(Batch polished)";
-      transcriptLines.length = 0;
-      transcriptLines.push(...text.split(/\r?\n/).map(l=>l+"\n"));
-    }
+      batchEl.textContent=text+"
+(Batch polished)";
+      batchLines.length=0;
+      batchLines.push(...text.split(/
+?
+/).map(l=>l+"
+"));
+    }else if(js.combinedRecognizedPhrases?.length){text=js.combinedRecognizedPhrases.sort((a,b)=>a.offset-b.offset).map(p=>`Speaker ${p.speaker??p.channel??0}: ${p.display}`).join("\n");}batchEl.textContent=text+"\n(Batch polished)";lines.length=0;lines.push(...text.split(/\r?\n/).map(l=>l+"\n"));}
 
-    /* ---------- GPT client ---------- */
-    const openai = new OpenAI({
-      apiKey: openaiKey,
-      baseURL: `${openaiBase}/openai/deployments/${deployment}`,
-      dangerouslyAllowBrowser:true,
-      defaultQuery:{ "api-version": apiVersion }
-    });
-async function askGPT() {
-  ansEl.textContent = "";
-  usageEl.textContent = "";
+    /* GPT */
+    const oa=new OpenAI({apiKey:openaiKey,baseURL:`${openaiBase}/openai/deployments/${deployment}`,dangerouslyAllowBrowser:true,defaultQuery:{"api-version":apiVersion}});
+    async function ask(){
+      ansEl.textContent="";usageEl.textContent="";
+      const includeClean=$("appendCheck").checked;
+      const topPrompt=`TOP 5 insights from the meeting. Then provide insights per speaker.`;
+      const cleanedInstr = includeClean ? "After that, append the AI‑cleaned, speaker‑labelled full transcript under the heading '--- AI-Cleaned Transcript ---'." : "";
+      const userContent = `${topPrompt}
+${cleanedInstr}
 
-  const basePrompt =
-    'TOP INSIGHTS first (max 5 bullets), then per-speaker bullets.\n' +
-    'Use the speaker name before the colon if present, otherwise "Speaker <n>".';
+----- LIVE TRANSCRIPT -----
+${liveLines.join("")}
+----- BATCH TRANSCRIPT -----
+${batchLines.join("")}
+-----`;
+      const r=await oa.chat.completions.create({model:"",temperature:0.3,messages:[
+        {role:"system",content:"You are a concise analyst."},
+        {role:"user",content:userContent}
+      ]});
+      ansEl.textContent=r.choices[0].message.content.trim();
+      if(r.usage){const{prompt_tokens:p,completion_tokens:c,total_tokens:t}=r.usage;usageEl.textContent=`Tokens — prompt ${p}  completion ${c}  total ${t}`;}
+    }\n\nAfter the insights, output the cleaned speaker-labelled transcript under a heading '--- AI-Cleaned Transcript ---'.\n\n-----\n${lines.join("")}-----`:`${base}\n\n-----\n${lines.join("")}-----`;const r=await oa.chat.completions.create({model:"",messages:[{role:"system",content:"You are a concise analyst."},{role:"user",content:user}],temperature:0.3});ansEl.textContent=r.choices[0].message.content.trim();if(r.usage){const{prompt_tokens:p,completion_tokens:c,total_tokens:t}=r.usage;usageEl.textContent=`Tokens — prompt ${p}  completion ${c}  total ${t}`;}}
 
-  // If the checkbox is ticked, ask GPT to append a cleaned transcript
-  const wantTranscript = appendCb.checked;
-  const fullPrompt = wantTranscript
-    ? basePrompt + '\n\nThen append a cleaned speaker-labelled full transcript.'
-    : basePrompt;
-
-  const r = await openai.chat.completions.create({
-    model:"",
-    messages:[
-      { role:"system", content:"You are a concise analyst." },
-      { role:"user",
-        content:`${fullPrompt}\n\n-----\n${transcriptLines.join("")}-----` }
-    ],
-    temperature:0.3
-  });
-
-  ansEl.textContent = r.choices[0].message.content.trim();
-  if (r.usage){
-    const { prompt_tokens:p, completion_tokens:c, total_tokens:t } = r.usage;
-    usageEl.textContent = `Tokens — prompt ${p}  completion ${c}  total ${t}`;
-  }
-}
-
-    /* ---------- buttons ---------- */
-    startBtn.onclick = async () => {
-      liveEl.textContent = batchEl.textContent = ansEl.textContent = "";
-      usageEl.textContent = ""; transcriptLines.length = 0;
-      askBtn.disabled = batchBtn.disabled = true;
-      startBtn.disabled = true; stopBtn.disabled = false;
-      await startRec(); stt.startTranscribingAsync();
-    };
-    stopBtn.onclick = async () => {
-      stt.stopTranscribingAsync();
-      window._audio = await stopRec();
-      startBtn.disabled = false; stopBtn.disabled = true;
-    };
-    batchBtn.onclick = async () => {
-      batchBtn.disabled = true;
-      append(batchEl,"\n⏳ Polishing with Batch STT…\n");
-      try{
-        const fileUrl = await uploadBlob(window._audio);
-        const jobUrl  = await createBatch(fileUrl);
-        const jobRes  = await pollJob(jobUrl);
-
-        /* --- fetch file list --- */
-        const filesRes = await fetch(jobRes.links.files,{
-          headers:{ "Ocp-Apim-Subscription-Key":speechKey }
-        });
-        const filesJson = await filesRes.json();
-        const txFile = filesJson.values.find(f=>f.kind==="Transcription");
-        if (!txFile) throw new Error("No transcription file found");
-        const txRes = await fetch(txFile.links.contentUrl);
-        const transcriptJson = await txRes.json();
-        /* ----------------------- */
-
-        applyBatch(transcriptJson);
-        append(batchEl,"\n✅ Batch transcript applied\n");
-        askBtn.disabled = false;
-      }catch(e){
-        append(batchEl,"❌ Batch error: "+e);
-        console.error(e);
-        batchBtn.disabled = false;
-      }
-    };
-    askBtn.onclick = askGPT;
+    /* buttons */
+    startBtn.onclick=async()=>{liveEl.textContent=batchEl.textContent=ansEl.textContent="";usageEl.textContent="";lines.length=0;askBtn.disabled=batchBtn.disabled=true;startBtn.disabled=true;stopBtn.disabled=false;await startRec();stt.startTranscribingAsync();};
+    stopBtn.onclick=async()=>{stt.stopTranscribingAsync();window._aud=await stopRec();startBtn.disabled=false;stopBtn.disabled=true;};
+    batchBtn.onclick=async()=>{batchBtn.disabled=true;append(batchEl,"\n⏳ Polishing with Batch STT…\n");try{const u=await up(window._aud);const j=await createJob(u);const res=await poll(j);const fr=await fetch(res.links.files,{headers:{"Ocp-Apim-Subscription-Key":speechKey}});const fj=await fr.json();const txf=fj.values.find(f=>f.kind==="Transcription");if(!txf)throw new Error("No tx file");const tj=await(await fetch(txf.links.contentUrl)).json();showBatch(tj);append(batchEl,"\n✅ Batch transcript applied\n");askBtn.disabled=false;}catch(e){append(batchEl,"❌ Batch error: "+e);console.error(e);batchBtn.disabled=false;}};
+    askBtn.onclick=ask;
   </script>
 </body>
 </html>
+

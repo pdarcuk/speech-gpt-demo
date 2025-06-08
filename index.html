@@ -76,6 +76,7 @@
     const usageEl = $("usage");
     const [startBtn, stopBtn, batchBtn, askBtn] =
           ["startBtn","stopBtn","batchBtn","askBtn"].map($);
+    const appendCb = $("appendCb");
     const append = (el, txt) => { el.textContent += txt; el.scrollTop = el.scrollHeight; };
 
     /* ---------- live STT ---------- */
@@ -176,23 +177,36 @@
       dangerouslyAllowBrowser:true,
       defaultQuery:{ "api-version": apiVersion }
     });
-    async function askGPT() {
-      ansEl.textContent = ""; usageEl.textContent = "";
-      const prompt = 'TOP INSIGHTS first (max 5 bullets), then per-speaker bullets.\\nUse the speaker name before the colon if present, otherwise "Speaker <n>".';
-      const r = await openai.chat.completions.create({
-        model:"",
-        messages:[
-          {role:"system",content:"You are a concise analyst."},
-          {role:"user",content:`${prompt}\n\n-----\n${transcriptLines.join("")}-----`}
-        ],
-        temperature:0.3
-      });
-      ansEl.textContent = r.choices[0].message.content.trim();
-      if (r.usage){
-        const {prompt_tokens:p,completion_tokens:c,total_tokens:t}=r.usage;
-        usageEl.textContent = `Tokens — prompt ${p}  completion ${c}  total ${t}`;
-      }
-    }
+async function askGPT() {
+  ansEl.textContent = "";
+  usageEl.textContent = "";
+
+  const basePrompt =
+    'TOP INSIGHTS first (max 5 bullets), then per-speaker bullets.\n' +
+    'Use the speaker name before the colon if present, otherwise "Speaker <n>".';
+
+  // If the checkbox is ticked, ask GPT to append a cleaned transcript
+  const wantTranscript = appendCb.checked;
+  const fullPrompt = wantTranscript
+    ? basePrompt + '\n\nThen append a cleaned speaker-labelled full transcript.'
+    : basePrompt;
+
+  const r = await openai.chat.completions.create({
+    model:"",
+    messages:[
+      { role:"system", content:"You are a concise analyst." },
+      { role:"user",
+        content:`${fullPrompt}\n\n-----\n${transcriptLines.join("")}-----` }
+    ],
+    temperature:0.3
+  });
+
+  ansEl.textContent = r.choices[0].message.content.trim();
+  if (r.usage){
+    const { prompt_tokens:p, completion_tokens:c, total_tokens:t } = r.usage;
+    usageEl.textContent = `Tokens — prompt ${p}  completion ${c}  total ${t}`;
+  }
+}
 
     /* ---------- buttons ---------- */
     startBtn.onclick = async () => {
